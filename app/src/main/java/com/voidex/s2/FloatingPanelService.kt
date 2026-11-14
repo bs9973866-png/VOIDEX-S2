@@ -40,6 +40,8 @@ class FloatingPanelService : Service() {
         const val ACTION_STOP = "com.voidex.s2.action.STOP_OVERLAY"
         const val ACTION_UPDATE_CANDIDATE_BOXES = "com.voidex.s2.action.UPDATE_CANDIDATE_BOXES"
         const val EXTRA_BOXES = "candidate_boxes"
+        const val EXTRA_FRAME_WIDTH = "capture_frame_width"
+        const val EXTRA_FRAME_HEIGHT = "capture_frame_height"
     }
     private lateinit var wm: WindowManager
     private var root: View? = null
@@ -102,6 +104,9 @@ class FloatingPanelService : Service() {
             val items = values.asList().chunked(4).filter { it.size == 4 }.map { v ->
                 OverlayMarker(RectF(v[0], v[1], v[2], v[3]), "КАНДИДАТ")
             }
+            val frameWidth = intent.getIntExtra(EXTRA_FRAME_WIDTH, 0)
+            val frameHeight = intent.getIntExtra(EXTRA_FRAME_HEIGHT, 0)
+            renderer?.setSourceFrameSize(frameWidth, frameHeight)
             renderer?.submitMarkers(items)
             return START_STICKY
         }
@@ -350,6 +355,8 @@ class OverlayRendererView(
     private val service: FloatingPanelService
 ) : View(service) {
     private val markers = mutableListOf<OverlayMarker>()
+    private var sourceFrameWidth = 0
+    private var sourceFrameHeight = 0
     private val boxPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.rgb(255, 70, 145)
         style = Paint.Style.STROKE
@@ -373,15 +380,30 @@ class OverlayRendererView(
         invalidate()
     }
 
-    /** A permitted provider can publish already-authorized, screen-space marker data here. */
+    fun setSourceFrameSize(width: Int, height: Int) {
+        if (width > 0 && height > 0) { sourceFrameWidth = width; sourceFrameHeight = height }
+    }
+
+    /** Smooth small shifts; empty updates immediately clear stale candidates. */
     fun submitMarkers(items: List<OverlayMarker>) {
-        markers.clear()
-        markers.addAll(items)
+        if (items.isEmpty()) markers.clear()
+        else if (markers.size == items.size) items.forEachIndexed { index, incoming ->
+            val previous = markers[index].bounds
+            val next = incoming.bounds
+            val alpha = 0.72f
+            previous.left += (next.left - previous.left) * alpha
+            previous.top += (next.top - previous.top) * alpha
+            previous.right += (next.right - previous.right) * alpha
+            previous.bottom += (next.bottom - previous.bottom) * alpha
+            markers[index] = incoming.copy(bounds = previous)
+        } else { markers.clear(); markers.addAll(items) }
         invalidate()
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+        val saveCount = canvas.save()
+        if (sourceFrameWidth > 0 && sourceFrameHeight > 0 && width > 0 && height > 0) canvas.scale(width.toFloat() / sourceFrameWidth, height.toFloat() / sourceFrameHeight)
         markers.forEach { marker ->
             if (boxes) canvas.drawRoundRect(marker.bounds, 8f, 8f, boxPaint)
             var y = marker.bounds.top - 10f
@@ -400,5 +422,6 @@ class OverlayRendererView(
                 canvas.drawRect(bar, boxPaint)
             }
         }
+        canvas.restoreToCount(saveCount)
     }
 }
