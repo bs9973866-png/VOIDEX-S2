@@ -252,6 +252,19 @@ class MainActivity : Activity() {
         content.addView(label("Автономные упражнения внутри VOIDEX S2. Они не подключаются к матчу и не анализируют экран Standoff 2."))
         content.addView(action("ОТКРЫТЬ ТЕСТ РЕАКЦИИ") { showReactionTest() })
         content.addView(action("ТРЕНИРОВКА ПО МИШЕНЯМ · 30 СЕК") { showTargetTraining() })
+        content.addView(label("ЛИЧНЫЕ РЕКОРДЫ"))
+        content.addView(label("Лучшая реакция: ${prefs.getLong("best_reaction_ms", 0L).let { if (it > 0L) "$it мс" else "—" }}"))
+        content.addView(label("Лучший раунд: ${prefs.getInt("best_target_hits", 0)} попаданий"))
+        content.addView(label("ПОСЛЕДНИЕ РАУНДЫ"))
+        val history = loadTargetHistory()
+        if (history.length() == 0) {
+            content.addView(label("Здесь появятся результаты завершённых тренировок."))
+        } else {
+            for (i in 0 until history.length()) {
+                val item = history.optJSONObject(i) ?: continue
+                content.addView(label("${i + 1}. ${item.optInt("hits")} попаданий · ${item.optInt("accuracy")}% точности · ${item.optLong("average")} мс реакции"))
+            }
+        }
     }
 
     private fun showTargetTraining() {
@@ -327,6 +340,7 @@ class MainActivity : Activity() {
                         val oldBest = prefs.getInt("best_target_hits", 0)
                         val newBest = maxOf(oldBest, hits)
                         prefs.edit().putInt("best_target_hits", newBest).apply()
+                        saveTargetSession(hits, misses, accuracy, average)
                         resultLabel.text = "РАУНД ЗАВЕРШЁН · ПОПАДАНИЯ: $hits · ТОЧНОСТЬ: $accuracy% · СРЕДНЯЯ РЕАКЦИЯ: ${average} мс · РЕКОРД: $newBest"
                         trainingRunnable = null
                     } else {
@@ -344,6 +358,30 @@ class MainActivity : Activity() {
         content.addView(label("Подсчёт реакции начинается с момента появления текущей мишени. Упражнение работает только в этом окне приложения."))
     }
 
+
+
+    private fun loadTargetHistory(): JSONArray {
+        return try {
+            JSONArray(prefs.getString("target_history", "[]") ?: "[]")
+        } catch (_: Exception) {
+            JSONArray()
+        }
+    }
+
+    private fun saveTargetSession(hits: Int, misses: Int, accuracy: Int, averageMs: Long) {
+        val previous = loadTargetHistory()
+        val updated = JSONArray()
+        updated.put(JSONObject()
+            .put("hits", hits)
+            .put("misses", misses)
+            .put("accuracy", accuracy)
+            .put("average", averageMs)
+            .put("time", System.currentTimeMillis()))
+        for (i in 0 until minOf(previous.length(), 4)) {
+            previous.optJSONObject(i)?.let(updated::put)
+        }
+        prefs.edit().putString("target_history", updated.toString()).apply()
+    }
 
     private fun showReactionTest() {
         reactionRunnable?.let(reactionHandler::removeCallbacks)
