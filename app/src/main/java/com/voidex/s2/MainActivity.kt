@@ -296,7 +296,8 @@ class MainActivity : Activity() {
             topMargin = dp(10)
             bottomMargin = dp(10)
         })
-        val start = action("СТАРТ") {
+        lateinit var startButton: Button
+        startButton = action("СТАРТ") {
             if (active) return@action
             cancelTrainingTimer()
             active = true
@@ -310,7 +311,7 @@ class MainActivity : Activity() {
             timerLabel.text = "ВРЕМЯ: 30 СЕК"
             targetView.resetTarget()
             targetView.setActive(true)
-            start.text = "РАУНД ИДЁТ"
+            startButton.text = "РАУНД ИДЁТ"
             val tick = object : Runnable {
                 override fun run() {
                     if (!active || isFinishing) return
@@ -319,14 +320,14 @@ class MainActivity : Activity() {
                     if (remaining <= 0) {
                         active = false
                         targetView.setActive(false)
-                        start.text = "ЕЩЁ РАЗ"
+                        startButton.text = "ЕЩЁ РАЗ"
                         val attempts = hits + misses
                         val accuracy = if (attempts == 0) 0 else hits * 100 / attempts
                         val average = if (reactionCount == 0) 0L else reactionTotal / reactionCount
                         val oldBest = prefs.getInt("best_target_hits", 0)
                         val newBest = maxOf(oldBest, hits)
                         prefs.edit().putInt("best_target_hits", newBest).apply()
-                        resultLabel.text = "РАУНД ЗАВЕРШЁН · ПОПАДАНИЯ: $hits · ТОЧНОСТЬ: $accuracy% · СРЕДНЯЯ РЕАКЦИЯ: \${average} мс · РЕКОРД: $newBest"
+                        resultLabel.text = "РАУНД ЗАВЕРШЁН · ПОПАДАНИЯ: $hits · ТОЧНОСТЬ: $accuracy% · СРЕДНЯЯ РЕАКЦИЯ: ${average} мс · РЕКОРД: $newBest"
                         trainingRunnable = null
                     } else {
                         trainingRunnable = this
@@ -337,7 +338,7 @@ class MainActivity : Activity() {
             trainingRunnable = tick
             reactionHandler.postDelayed(tick, 1000L)
         }
-        content.addView(start, LinearLayout.LayoutParams(-1, dp(58)))
+        content.addView(startButton, LinearLayout.LayoutParams(-1, dp(58)))
         val best = prefs.getInt("best_target_hits", 0)
         content.addView(label("ЛИЧНЫЙ РЕКОРД: $best попаданий за 30 секунд"))
         content.addView(label("Подсчёт реакции начинается с момента появления текущей мишени. Упражнение работает только в этом окне приложения."))
