@@ -50,6 +50,20 @@ class MainActivity : Activity() {
         tabs.addView(action("ТРЕНИРОВКА") { currentTab = "training"; showTraining() },
             LinearLayout.LayoutParams(0, dp(48), 1f))
         root.addView(tabs)
+        root.addView(action("ЗАПУСТИТЬ ПЛАВАЮЩУЮ ПАНЕЛЬ") {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M &&
+                !android.provider.Settings.canDrawOverlays(this)) {
+                val permissionIntent = Intent(
+                    android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:$packageName")
+                )
+                startActivity(permissionIntent)
+                Toast.makeText(this, "Разреши отображение поверх других приложений, затем вернись сюда.", Toast.LENGTH_LONG).show()
+            } else {
+                startService(Intent(this, FloatingPanelService::class.java))
+                Toast.makeText(this, "Плавающая панель запущена", Toast.LENGTH_SHORT).show()
+            }
+        })
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(12), 0, 0)
