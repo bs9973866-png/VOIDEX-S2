@@ -37,6 +37,7 @@ class FloatingPanelService : Service() {
     private var timerLabel: TextView? = null
     private var timerTask: Runnable? = null
     private lateinit var params: WindowManager.LayoutParams
+    private lateinit var renderParams: WindowManager.LayoutParams
     private var renderer: OverlayRendererView? = null
     private var showBoxes = true
     private var showNames = true
@@ -60,6 +61,20 @@ class FloatingPanelService : Service() {
             x = 24
             y = 180
         }
+        renderParams = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            else WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT
+        )
+        renderer = OverlayRendererView(this)
+        wm.addView(renderer, renderParams)
         showBubble()
     }
 
@@ -220,6 +235,7 @@ class FloatingPanelService : Service() {
     override fun onDestroy() {
         timerTask?.let(handler::removeCallbacks)
         removeRoot()
+        renderer?.let { try { wm.removeView(it) } catch (_: Exception) {} }
         renderer = null
         super.onDestroy()
     }
