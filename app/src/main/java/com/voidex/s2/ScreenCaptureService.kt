@@ -40,6 +40,7 @@ class ScreenCaptureService : Service() {
     private var imageReader: ImageReader? = null
     private var worker: HandlerThread? = null
     private var framesReceived = 0L
+    private var statsRunnable: Runnable? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
@@ -109,6 +110,24 @@ class ScreenCaptureService : Service() {
             null,
             handler
         )
+        if (projection == null || virtualDisplay == null) {
+            stopCapture()
+            stopForegroundCompat()
+            stopSelf()
+            return
+        }
+
+        // Periodically refresh capture diagnostics in the foreground notification.
+        val stats = object : Runnable {
+            override fun run() {
+                if (projection == null || worker == null) return
+                (getSystemService(NOTIFICATION_SERVICE) as NotificationManager)
+                    .notify(NOTIFICATION_ID, buildNotification())
+                handler.postDelayed(this, 5000L)
+            }
+        }
+        statsRunnable = stats
+        handler.postDelayed(stats, 5000L)
     }
 
     private fun stopCapture(stopProjection: Boolean = true) {
@@ -122,6 +141,8 @@ class ScreenCaptureService : Service() {
         if (stopProjection) {
             try { activeProjection?.stop() } catch (_: Exception) {}
         }
+        statsRunnable?.let { callback -> worker?.let { thread -> Handler(thread.looper).removeCallbacks(callback) } }
+        statsRunnable = null
         worker?.quitSafely()
         worker = null
     }
@@ -151,19 +172,23 @@ class ScreenCaptureService : Service() {
         )
         return builder.setSmallIcon(android.R.drawable.ic_menu_camera)
             .setContentTitle("VOIDEX: захват экрана активен")
-            .setContentText("Кадры захватываются только после твоего разрешения")
+            .setContentText("Захват активен · получено кадров: $framesReceived")
             .setOngoing(true)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Остановить", stopPending)
             .build()
     }
 
-    override fun onDestroy() {
-        stopCapture()
+    private fun stopForegroundCompat() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_REMOVE)
         else {
             @Suppress("DEPRECATION")
             stopForeground(true)
         }
+    }
+
+    override fun onDestroy() {
+        stopCapture()
+        stopForegroundCompat()
         (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).cancel(NOTIFICATION_ID)
         super.onDestroy()
     }
