@@ -83,7 +83,13 @@ class FloatingPanelService : Service() {
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         )
+        val settings = getSharedPreferences("voidex_overlay", MODE_PRIVATE)
+        showBoxes = settings.getBoolean("boxes", true)
+        showNames = settings.getBoolean("names", true)
+        showDistance = settings.getBoolean("distance", true)
+        showHealth = settings.getBoolean("health", false)
         renderer = OverlayRendererView(this)
+        renderer?.configure(showBoxes, showNames, showDistance, showHealth)
         wm.addView(renderer, renderParams)
         showBubble()
     }
@@ -104,9 +110,14 @@ class FloatingPanelService : Service() {
         } else {
             @Suppress("DEPRECATION") Notification.Builder(this)
         }
+        val openIntent = PendingIntent.getActivity(
+            this, 1, Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
         val notification = builder.setSmallIcon(android.R.drawable.ic_menu_view)
             .setContentTitle("VOIDEX S2 Overlay активен")
-            .setContentText("Плавающая панель работает поверх приложений")
+            .setContentText("Нажми, чтобы открыть VOIDEX S2")
+            .setContentIntent(openIntent)
             .setOngoing(true)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Остановить", stopPending)
             .build()
@@ -212,6 +223,12 @@ class FloatingPanelService : Service() {
     }
 
     private fun refreshRenderer() {
+        getSharedPreferences("voidex_overlay", MODE_PRIVATE).edit()
+            .putBoolean("boxes", showBoxes)
+            .putBoolean("names", showNames)
+            .putBoolean("distance", showDistance)
+            .putBoolean("health", showHealth)
+            .apply()
         renderer?.configure(showBoxes, showNames, showDistance, showHealth)
     }
 
@@ -287,9 +304,16 @@ class FloatingPanelService : Service() {
 
     override fun onDestroy() {
         timerTask?.let(handler::removeCallbacks)
+        timerTask = null
         removeRoot()
         renderer?.let { try { wm.removeView(it) } catch (_: Exception) {} }
         renderer = null
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION") stopForeground(true)
+        }
+        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).cancel(NOTIFICATION_ID)
         super.onDestroy()
     }
 
