@@ -2,7 +2,6 @@ package com.voidex.s2
 
 import android.app.Activity
 import android.content.Intent
-import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
@@ -163,7 +162,10 @@ class MainActivity : Activity() {
             val thumb = ImageView(this).apply {
                 layoutParams = LinearLayout.LayoutParams(dp(54), dp(54))
                 scaleType = ImageView.ScaleType.CENTER_CROP
-                setImageURI(Uri.parse(skin.uri))
+                contentDescription = "Превью: ${skin.name}"
+                if (!setImageSafely(this, skin.uri)) {
+                    setBackgroundColor(Color.rgb(55, 42, 65))
+                }
             }
             card.addView(thumb)
             val name = TextView(this).apply {
@@ -188,8 +190,13 @@ class MainActivity : Activity() {
             adjustViewBounds = true
             scaleType = ImageView.ScaleType.FIT_CENTER
             setBackgroundColor(Color.rgb(20, 16, 29))
-            setImageURI(Uri.parse(skin.uri))
             contentDescription = "Локальное превью: ${skin.name}"
+            if (!setImageSafely(this, skin.uri)) {
+                setBackgroundColor(Color.rgb(55, 42, 65))
+            }
+        }
+        if (image.drawable == null) {
+            content.addView(label("Не удалось открыть изображение. Возможно, исходный файл был перемещён или доступ к нему отозван. Удали запись и импортируй файл заново."))
         }
         content.addView(image, LinearLayout.LayoutParams(-1, dp(360)).apply {
             topMargin = dp(12); bottomMargin = dp(12)
@@ -200,6 +207,18 @@ class MainActivity : Activity() {
         })
         content.addView(action("УДАЛИТЬ ИЗ КОЛЛЕКЦИИ") {
             skins.removeAll { it.id == skin.id }
+            if (skins.none { it.uri == skin.uri }) {
+                try {
+                    contentResolver.releasePersistableUriPermission(
+                        Uri.parse(skin.uri),
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                } catch (_: SecurityException) {
+                    // The provider may have already revoked this grant.
+                } catch (_: IllegalArgumentException) {
+                    // The URI may not have a persistable grant.
+                }
+            }
             saveSkins()
             showSkins()
         })
@@ -315,6 +334,19 @@ class MainActivity : Activity() {
             saveSkins()
         }
         showSkins()
+    }
+
+    private fun setImageSafely(view: ImageView, uriString: String): Boolean {
+        return try {
+            view.setImageURI(Uri.parse(uriString))
+            view.drawable != null
+        } catch (_: SecurityException) {
+            false
+        } catch (_: IllegalArgumentException) {
+            false
+        } catch (_: RuntimeException) {
+            false
+        }
     }
 
     private fun queryName(uri: Uri): String? =
