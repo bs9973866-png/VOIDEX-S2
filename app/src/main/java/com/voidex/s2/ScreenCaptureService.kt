@@ -93,7 +93,9 @@ class ScreenCaptureService : Service() {
         projection = manager.getMediaProjection(resultCode, resultData)
         projection?.registerCallback(object : MediaProjection.Callback() {
             override fun onStop() {
-                stopCapture()
+                // MediaProjection is already stopped by the system here.
+                // Do not call projection.stop() again from its own stop callback.
+                stopCapture(stopProjection = false)
                 stopSelf()
             }
         }, handler)
@@ -109,14 +111,17 @@ class ScreenCaptureService : Service() {
         )
     }
 
-    private fun stopCapture() {
+    private fun stopCapture(stopProjection: Boolean = true) {
         try { virtualDisplay?.release() } catch (_: Exception) {}
         virtualDisplay = null
         try { imageReader?.setOnImageAvailableListener(null, null) } catch (_: Exception) {}
         try { imageReader?.close() } catch (_: Exception) {}
         imageReader = null
-        try { projection?.stop() } catch (_: Exception) {}
+        val activeProjection = projection
         projection = null
+        if (stopProjection) {
+            try { activeProjection?.stop() } catch (_: Exception) {}
+        }
         worker?.quitSafely()
         worker = null
     }
