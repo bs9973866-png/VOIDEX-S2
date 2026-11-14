@@ -23,6 +23,8 @@ class MainActivity : Activity() {
     private lateinit var content: LinearLayout
     private var currentTab = "skins"
     private val pickSkin = 41
+    private val notificationPermissionRequest = 42
+    private var pendingGameLaunch = false
     private val prefs by lazy { getSharedPreferences("voidex_s2", MODE_PRIVATE) }
     private val reactionHandler = Handler(Looper.getMainLooper())
     private var reactionRunnable: Runnable? = null
@@ -72,6 +74,12 @@ class MainActivity : Activity() {
     }
 
     private fun startOverlayIfAllowed(launchGame: Boolean) {
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            pendingGameLaunch = launchGame
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), notificationPermissionRequest)
+            return
+        }
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M &&
             !android.provider.Settings.canDrawOverlays(this)) {
             val permissionIntent = Intent(
@@ -111,6 +119,20 @@ class MainActivity : Activity() {
         }
         gameIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         startActivity(gameIntent)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == notificationPermissionRequest) {
+            val launchGame = pendingGameLaunch
+            pendingGameLaunch = false
+            // Overlay startup remains available even if notifications are declined.
+            startOverlayIfAllowed(launchGame)
+        }
     }
 
     private fun showSkins() {
