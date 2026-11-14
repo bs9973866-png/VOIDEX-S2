@@ -29,8 +29,8 @@ import com.google.mlkit.vision.pose.defaults.PoseDetectorOptions
  * User-consented screen capture foundation.
  *
  * Captured frames are currently sampled only to verify that the MediaProjection
- * pipeline is alive and runs a conservative visible blue-silhouette heuristic.
- * Candidate boxes are approximate and may include false positives.
+ * pipeline is alive and samples frames with an on-device pose detector.
+ * Candidate boxes are experimental screen-space estimates, not game telemetry.
  */
 class ScreenCaptureService : Service() {
     companion object {
@@ -142,10 +142,22 @@ class ScreenCaptureService : Service() {
                                     startService(Intent(this, FloatingPanelService::class.java).apply {
                                         action = "com.voidex.s2.action.UPDATE_CANDIDATE_BOXES"
                                         putExtra("candidate_boxes", values)
+                                        putExtra("capture_frame_width", frameWidth)
+                                        putExtra("capture_frame_height", frameHeight)
                                     })
                                 } catch (_: Exception) {
                                     // Overlay may have been stopped by the user.
                                 }
+                            }
+                            .addOnFailureListener {
+                                try {
+                                    startService(Intent(this, FloatingPanelService::class.java).apply {
+                                        action = "com.voidex.s2.action.UPDATE_CANDIDATE_BOXES"
+                                        putExtra("candidate_boxes", FloatArray(0))
+                                        putExtra("capture_frame_width", frameWidth)
+                                        putExtra("capture_frame_height", frameHeight)
+                                    })
+                                } catch (_: Exception) {}
                             }
                             .addOnCompleteListener {
                                 if (!bitmap.isRecycled) bitmap.recycle()
@@ -153,7 +165,7 @@ class ScreenCaptureService : Service() {
                             }
                     }
                 } catch (_: Exception) {
-                    // Skip a bad frame and continue capture.
+                    frameProcessing.set(false)
                 } finally {
                     image.close()
                 }
