@@ -118,8 +118,8 @@ class ScreenCaptureService : Service() {
                             values[index * 4 + 3] = rect.bottom
                         }
                         startService(Intent(this, FloatingPanelService::class.java).apply {
-                            action = FloatingPanelService.ACTION_UPDATE_CANDIDATE_BOXES
-                            putExtra(FloatingPanelService.EXTRA_BOXES, values)
+                            action = com.voidex.s2.action.UPDATE_CANDIDATE_BOXES
+                            putExtra(candidate_boxes, values)
                         })
                     }
                 } catch (_: Exception) {
