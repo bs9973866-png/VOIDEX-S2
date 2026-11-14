@@ -10,6 +10,7 @@ Android companion app for Standoff 2, built with Kotlin.
 - Overlay display toggles for boxes, names, distance and health.
 - 30-second timer in the overlay panel.
 - Standalone reaction-time trainer with a saved personal best.
+- 30-second target-tapping exercise with hit/miss count, accuracy, average reaction time and saved personal record.
 - One-tap attempt to open Standoff 2 together with the overlay.
 - Stop the overlay from the app or its foreground notification.
 
@@ -18,6 +19,8 @@ Android companion app for Standoff 2, built with Kotlin.
 The overlay renderer currently has no game-data provider, so it does **not** display real player markers. It does not read game memory, inspect game files, intercept traffic, inject code or bypass anti-cheat. Android's overlay permission only allows a window to be drawn over other apps; it does not reveal objects hidden behind walls.
 
 The image collection is a local gallery and preview. It does not replace skins or weapon models inside Standoff 2.
+
+The target exercise is a self-contained practice game inside VOIDEX. It does not detect, track or interact with players in Standoff 2.
 
 ## Build
 
