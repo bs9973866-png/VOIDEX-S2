@@ -63,6 +63,14 @@ class MainActivity : Activity() {
         root.addView(action("ЗАПУСТИТЬ STANDOFF 2 + OVERLAY") {
             startOverlayIfAllowed(launchGame = true)
         })
+        root.addView(action("ОСТАНОВИТЬ OVERLAY") {
+            val stopped = stopService(Intent(this, FloatingPanelService::class.java))
+            Toast.makeText(
+                this,
+                if (stopped) "Команда остановки отправлена" else "Сервис Overlay уже не запущен",
+                Toast.LENGTH_SHORT
+            ).show()
+        })
         root.addView(label("Кнопка запускает внешний оверлей и открывает Standoff 2. Оверлей не получает скрытые координаты игроков; маркеры появятся только при подключении разрешённого источника данных."))
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
