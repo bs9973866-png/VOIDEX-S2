@@ -27,6 +27,7 @@ class MainActivity : Activity() {
     private val prefs by lazy { getSharedPreferences("voidex_s2", MODE_PRIVATE) }
     private val reactionHandler = Handler(Looper.getMainLooper())
     private var reactionRunnable: Runnable? = null
+    private var trainingRunnable: Runnable? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -238,14 +239,110 @@ class MainActivity : Activity() {
         content.addView(label("Выбор сохраняется в приложении. Визуальная замена модели/оружия непосредственно в матче не поддерживается."))
     }
 
+    private fun cancelTrainingTimer() {
+        trainingRunnable?.let(reactionHandler::removeCallbacks)
+        trainingRunnable = null
+    }
+
     private fun showTraining() {
+        cancelTrainingTimer()
         currentTab = "training"
         content.removeAllViews()
         content.addView(label("ТРЕНИРОВОЧНАЯ ЛАБОРАТОРИЯ"))
-        content.addView(label("Следующий безопасный модуль — автономные упражнения на реакцию, трекинг и контроль чувствительности."))
-        content.addView(label("Тренировочные мишени будут отображаться только внутри VOIDEX S2, без чтения изображения игры и обнаружения игроков в матче."))
+        content.addView(label("Автономные упражнения внутри VOIDEX S2. Они не подключаются к матчу и не анализируют экран Standoff 2."))
         content.addView(action("ОТКРЫТЬ ТЕСТ РЕАКЦИИ") { showReactionTest() })
+        content.addView(action("ТРЕНИРОВКА ПО МИШЕНЯМ · 30 СЕК") { showTargetTraining() })
     }
+
+    private fun showTargetTraining() {
+        cancelTrainingTimer()
+        reactionRunnable?.let(reactionHandler::removeCallbacks)
+        reactionRunnable = null
+        content.removeAllViews()
+        content.addView(action("← НАЗАД К ТРЕНИРОВКАМ") { showTraining() })
+        content.addView(label("МИШЕНИ · 30 СЕКУНД"))
+        content.addView(label("Попадай по кругу как можно быстрее. Промахи тоже учитываются; мишень перемещается после каждого касания."))
+        val timerLabel = label("ВРЕМЯ: 30 СЕК")
+        val statsLabel = label("ПОПАДАНИЯ: 0   ПРОМАХИ: 0   ТОЧНОСТЬ: 0%")
+        val resultLabel = label("Нажми «СТАРТ», чтобы начать раунд.")
+        content.addView(timerLabel)
+        content.addView(statsLabel)
+        content.addView(resultLabel)
+        var active = false
+        var remaining = 30
+        var hits = 0
+        var misses = 0
+        var reactionTotal = 0L
+        var reactionCount = 0
+        val targetView = TargetTrainingView(this).apply {
+            setBackgroundColor(Color.rgb(17, 13, 27))
+            setActive(false)
+            onTapResult = { hit, reactionMs ->
+                if (active) {
+                    if (hit) {
+                        hits++
+                        reactionTotal += reactionMs
+                        reactionCount++
+                    } else {
+                        misses++
+                    }
+                    val attempts = hits + misses
+                    val accuracy = if (attempts == 0) 0 else hits * 100 / attempts
+                    statsLabel.text = "ПОПАДАНИЯ: $hits   ПРОМАХИ: $misses   ТОЧНОСТЬ: $accuracy%"
+                }
+            }
+        }
+        content.addView(targetView, LinearLayout.LayoutParams(-1, dp(300)).apply {
+            topMargin = dp(10)
+            bottomMargin = dp(10)
+        })
+        val start = action("СТАРТ") {
+            if (active) return@action
+            cancelTrainingTimer()
+            active = true
+            remaining = 30
+            hits = 0
+            misses = 0
+            reactionTotal = 0L
+            reactionCount = 0
+            statsLabel.text = "ПОПАДАНИЯ: 0   ПРОМАХИ: 0   ТОЧНОСТЬ: 0%"
+            resultLabel.text = "Раунд идёт — целься по центру мишени."
+            timerLabel.text = "ВРЕМЯ: 30 СЕК"
+            targetView.resetTarget()
+            targetView.setActive(true)
+            start.text = "РАУНД ИДЁТ"
+            val tick = object : Runnable {
+                override fun run() {
+                    if (!active || isFinishing) return
+                    remaining--
+                    timerLabel.text = "ВРЕМЯ: $remaining СЕК"
+                    if (remaining <= 0) {
+                        active = false
+                        targetView.setActive(false)
+                        start.text = "ЕЩЁ РАЗ"
+                        val attempts = hits + misses
+                        val accuracy = if (attempts == 0) 0 else hits * 100 / attempts
+                        val average = if (reactionCount == 0) 0L else reactionTotal / reactionCount
+                        val oldBest = prefs.getInt("best_target_hits", 0)
+                        val newBest = maxOf(oldBest, hits)
+                        prefs.edit().putInt("best_target_hits", newBest).apply()
+                        resultLabel.text = "РАУНД ЗАВЕРШЁН · ПОПАДАНИЯ: $hits · ТОЧНОСТЬ: $accuracy% · СРЕДНЯЯ РЕАКЦИЯ: \${average} мс · РЕКОРД: $newBest"
+                        trainingRunnable = null
+                    } else {
+                        trainingRunnable = this
+                        reactionHandler.postDelayed(this, 1000L)
+                    }
+                }
+            }
+            trainingRunnable = tick
+            reactionHandler.postDelayed(tick, 1000L)
+        }
+        content.addView(start, LinearLayout.LayoutParams(-1, dp(58)))
+        val best = prefs.getInt("best_target_hits", 0)
+        content.addView(label("ЛИЧНЫЙ РЕКОРД: $best попаданий за 30 секунд"))
+        content.addView(label("Подсчёт реакции начинается с момента появления текущей мишени. Упражнение работает только в этом окне приложения."))
+    }
+
 
     private fun showReactionTest() {
         reactionRunnable?.let(reactionHandler::removeCallbacks)
@@ -313,6 +410,7 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         reactionRunnable?.let(reactionHandler::removeCallbacks)
         reactionRunnable = null
+        cancelTrainingTimer()
         super.onDestroy()
     }
 
