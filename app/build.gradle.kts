@@ -2,6 +2,10 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
+dependencies {
+    implementation("com.google.mlkit:pose-detection:18.0.0-beta5")
+}
+
 android {
     namespace = "com.voidex.s2"
     compileSdk = 35
