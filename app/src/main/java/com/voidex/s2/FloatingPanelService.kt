@@ -38,6 +38,8 @@ class FloatingPanelService : Service() {
         private const val CHANNEL_ID = "voidex_overlay"
         private const val NOTIFICATION_ID = 2101
         const val ACTION_STOP = "com.voidex.s2.action.STOP_OVERLAY"
+        const val ACTION_UPDATE_CANDIDATE_BOXES = "com.voidex.s2.action.UPDATE_CANDIDATE_BOXES"
+        const val EXTRA_BOXES = "candidate_boxes"
     }
     private lateinit var wm: WindowManager
     private var root: View? = null
@@ -95,6 +97,14 @@ class FloatingPanelService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_UPDATE_CANDIDATE_BOXES) {
+            val values = intent.getFloatArrayExtra(EXTRA_BOXES) ?: FloatArray(0)
+            val items = values.asList().chunked(4).filter { it.size == 4 }.map { v ->
+                OverlayMarker(RectF(v[0], v[1], v[2], v[3]), "КАНДИДАТ")
+            }
+            renderer?.submitMarkers(items)
+            return START_STICKY
+        }
         if (intent?.action == ACTION_STOP) {
             stopSelf()
             return START_NOT_STICKY
