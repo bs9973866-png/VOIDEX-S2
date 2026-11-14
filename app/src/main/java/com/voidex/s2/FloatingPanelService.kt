@@ -1,6 +1,10 @@
 package com.voidex.s2
 
 import android.app.Service
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Intent
 import android.graphics.Canvas
 import android.graphics.Color
@@ -13,6 +17,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.content.pm.ServiceInfo
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -29,6 +34,11 @@ import android.widget.TextView
  * This service does not inspect the game surface, process memory, files or network traffic.
  */
 class FloatingPanelService : Service() {
+    companion object {
+        private const val CHANNEL_ID = "voidex_overlay"
+        private const val NOTIFICATION_ID = 2101
+        const val ACTION_STOP = "com.voidex.s2.action.STOP_OVERLAY"
+    }
     private lateinit var wm: WindowManager
     private var root: View? = null
     private var expanded = false
@@ -76,6 +86,49 @@ class FloatingPanelService : Service() {
         renderer = OverlayRendererView(this)
         wm.addView(renderer, renderParams)
         showBubble()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        ensureNotificationChannel()
+        val stopIntent = Intent(this, FloatingPanelService::class.java).setAction(ACTION_STOP)
+        val stopPending = PendingIntent.getService(
+            this, 0, stopIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, CHANNEL_ID)
+        } else {
+            @Suppress("DEPRECATION") Notification.Builder(this)
+        }
+        val notification = builder.setSmallIcon(android.R.drawable.ic_menu_view)
+            .setContentTitle("VOIDEX S2 Overlay активен")
+            .setContentText("Плавающая панель работает поверх приложений")
+            .setOngoing(true)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Остановить", stopPending)
+            .build()
+        if (Build.VERSION.SDK_INT >= 34) {
+            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+        return START_STICKY
+    }
+
+    private fun ensureNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+            if (manager.getNotificationChannel(CHANNEL_ID) == null) {
+                manager.createNotificationChannel(
+                    NotificationChannel(CHANNEL_ID, "VOIDEX Overlay", NotificationManager.IMPORTANCE_LOW).apply {
+                        description = "Постоянное уведомление работающего оверлея"
+                    }
+                )
+            }
+        }
     }
 
     private fun showBubble() {
