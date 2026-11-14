@@ -23,6 +23,7 @@ class MainActivity : Activity() {
     private var currentTab = "skins"
     private val pickSkin = 41
     private val notificationPermissionRequest = 42
+    private val screenCaptureRequest = 43
     private var pendingGameLaunch = false
     private val prefs by lazy { getSharedPreferences("voidex_s2", MODE_PRIVATE) }
     private val reactionHandler = Handler(Looper.getMainLooper())
@@ -62,6 +63,13 @@ class MainActivity : Activity() {
         })
         root.addView(action("ЗАПУСТИТЬ STANDOFF 2 + OVERLAY") {
             startOverlayIfAllowed(launchGame = true)
+        })
+        root.addView(action("ВКЛЮЧИТЬ ЗАХВАТ ЭКРАНА") {
+            requestScreenCapture()
+        })
+        root.addView(action("ОСТАНОВИТЬ ЗАХВАТ ЭКРАНА") {
+            stopService(Intent(this, ScreenCaptureService::class.java).setAction(ScreenCaptureService.ACTION_STOP))
+            Toast.makeText(this, "Захват экрана остановлен", Toast.LENGTH_SHORT).show()
         })
         root.addView(action("ОСТАНОВИТЬ OVERLAY") {
             val stopped = stopService(Intent(this, FloatingPanelService::class.java))
@@ -462,9 +470,36 @@ class MainActivity : Activity() {
         startActivityForResult(intent, pickSkin)
     }
 
+    private fun requestScreenCapture() {
+        val manager = getSystemService(android.content.Context.MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
+        startActivityForResult(manager.createScreenCaptureIntent(), screenCaptureRequest)
+    }
+
     @Deprecated("Deprecated in Android API")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == screenCaptureRequest) {
+            if (resultCode == RESULT_OK && data != null) {
+                val captureIntent = Intent(this, ScreenCaptureService::class.java).apply {
+                    action = ScreenCaptureService.ACTION_START
+                    putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, resultCode)
+                    putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, data)
+                }
+                try {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        startForegroundService(captureIntent)
+                    } else {
+                        startService(captureIntent)
+                    }
+                    Toast.makeText(this, "Захват экрана разрешён и запущен", Toast.LENGTH_SHORT).show()
+                } catch (error: Exception) {
+                    Toast.makeText(this, "Не удалось запустить захват: ${error.message}", Toast.LENGTH_LONG).show()
+                }
+            } else {
+                Toast.makeText(this, "Разрешение на захват экрана не выдано", Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
         if (requestCode != pickSkin || resultCode != RESULT_OK) return
         val uri = data?.data ?: return
         val mime = contentResolver.getType(uri) ?: ""
