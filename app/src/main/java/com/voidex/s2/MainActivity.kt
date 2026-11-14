@@ -6,6 +6,9 @@ import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.view.Gravity
 import android.view.View
@@ -21,6 +24,8 @@ class MainActivity : Activity() {
     private var currentTab = "skins"
     private val pickSkin = 41
     private val prefs by lazy { getSharedPreferences("voidex_s2", MODE_PRIVATE) }
+    private val reactionHandler = Handler(Looper.getMainLooper())
+    private var reactionRunnable: Runnable? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -181,25 +186,72 @@ class MainActivity : Activity() {
     }
 
     private fun showReactionTest() {
+        reactionRunnable?.let(reactionHandler::removeCallbacks)
+        reactionRunnable = null
         content.removeAllViews()
         content.addView(action("← НАЗАД") { showTraining() })
         content.addView(label("ТЕСТ РЕАКЦИИ"))
+        val best = prefs.getLong("best_reaction_ms", 0L)
+        val bestLabel = label(if (best > 0L) "ЛУЧШИЙ РЕЗУЛЬТАТ: ${best} мс" else "ЛУЧШИЙ РЕЗУЛЬТАТ: пока нет")
+        content.addView(bestLabel)
         val result = TextView(this).apply {
-            text = "Нажми «СТАРТ», затем нажми на кнопку, когда она станет зелёной."
+            text = "Нажми «СТАРТ». Дождись зелёного сигнала и нажми как можно быстрее."
             textSize = 16f
             setTextColor(Color.WHITE)
             setPadding(0, dp(18), 0, dp(18))
         }
         content.addView(result)
-        val target = action("СТАРТ") {
-            result.text = "ТЕСТОВАЯ МИШЕНЬ — нажми, чтобы зафиксировать реакцию. Это демонстрация интерфейса, не измерение точного времени."
-            targetButtonStatePlaceholder()
+        var state = 0 // 0 = idle, 1 = waiting, 2 = green
+        var greenAt = 0L
+        val target = action("СТАРТ") { }
+        target.setOnClickListener {
+            when (state) {
+                0 -> {
+                    state = 1
+                    target.text = "ЖДИ ЗЕЛЁНЫЙ..."
+                    target.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.rgb(105, 40, 90))
+                    result.text = "Не нажимай раньше времени."
+                    val delay = (1200L..4200L).random()
+                    val task = Runnable {
+                        if (state == 1 && !isFinishing) {
+                            state = 2
+                            greenAt = SystemClock.elapsedRealtime()
+                            target.text = "ЖМИ СЕЙЧАС!"
+                            target.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.rgb(30, 170, 95))
+                            result.text = "ЗЕЛЁНЫЙ СИГНАЛ! Нажимай!"
+                        }
+                    }
+                    reactionRunnable = task
+                    reactionHandler.postDelayed(task, delay)
+                }
+                1 -> {
+                    reactionRunnable?.let(reactionHandler::removeCallbacks)
+                    reactionRunnable = null
+                    state = 0
+                    target.text = "РАНО! ЕЩЁ РАЗ"
+                    target.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.rgb(190, 65, 75))
+                    result.text = "Слишком рано. Нажми кнопку, чтобы начать заново."
+                }
+                2 -> {
+                    val elapsed = (SystemClock.elapsedRealtime() - greenAt).coerceAtLeast(0L)
+                    val oldBest = prefs.getLong("best_reaction_ms", 0L)
+                    val newBest = if (oldBest == 0L || elapsed < oldBest) elapsed else oldBest
+                    prefs.edit().putLong("best_reaction_ms", newBest).apply()
+                    bestLabel.text = "ЛУЧШИЙ РЕЗУЛЬТАТ: ${newBest} мс"
+                    state = 0
+                    target.text = "ЕЩЁ РАЗ"
+                    target.backgroundTintList = android.content.res.ColorStateList.valueOf(Color.rgb(105, 40, 90))
+                    result.text = "ТВОЯ РЕАКЦИЯ: ${elapsed} мс" + if (elapsed == newBest) " • НОВЫЙ РЕКОРД!" else ""
+                }
+            }
         }
-        content.addView(target)
+        content.addView(target, LinearLayout.LayoutParams(-1, dp(64)))
     }
 
-    private fun targetButtonStatePlaceholder() {
-        Toast.makeText(this, "Тренировочный экран готов к следующему этапу", Toast.LENGTH_SHORT).show()
+    override fun onDestroy() {
+        reactionRunnable?.let(reactionHandler::removeCallbacks)
+        reactionRunnable = null
+        super.onDestroy()
     }
 
     private fun openPicker() {
