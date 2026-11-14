@@ -149,6 +149,15 @@ class MainActivity : Activity() {
         content.addView(label("Импортируй изображение скина или оружия, чтобы сохранить его в VOIDEX и открыть крупное превью."))
         content.addView(action("+ ДОБАВИТЬ ИЗОБРАЖЕНИЕ") { openPicker() })
         content.addView(label("МОЯ КОЛЛЕКЦИЯ  •  ${skins.size}"))
+        val selectedId = prefs.getString("selected_skin_id", null)
+        if (selectedId != null) {
+            val selectedSkin = skins.firstOrNull { it.id == selectedId }
+            if (selectedSkin != null) {
+                content.addView(label("ВЫБРАНО ДЛЯ ЛОКАЛЬНОГО ПРЕВЬЮ: ${selectedSkin.name}"))
+            } else {
+                prefs.edit().remove("selected_skin_id").apply()
+            }
+        }
         if (skins.isEmpty()) {
             content.addView(label("Пока пусто. Нажми «Добавить изображение» и выбери PNG или JPG."))
         }
@@ -204,9 +213,13 @@ class MainActivity : Activity() {
         content.addView(action("ВЫБРАТЬ ДЛЯ ПРЕВЬЮ") {
             prefs.edit().putString("selected_skin_id", skin.id).apply()
             Toast.makeText(this, "Выбрано локальное превью: ${skin.name}", Toast.LENGTH_SHORT).show()
+            showSkins()
         })
         content.addView(action("УДАЛИТЬ ИЗ КОЛЛЕКЦИИ") {
             skins.removeAll { it.id == skin.id }
+            if (prefs.getString("selected_skin_id", null) == skin.id) {
+                prefs.edit().remove("selected_skin_id").apply()
+            }
             if (skins.none { it.uri == skin.uri }) {
                 try {
                     contentResolver.releasePersistableUriPermission(
