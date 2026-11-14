@@ -132,6 +132,7 @@ class FloatingPanelService : Service() {
         var startY = 0
         var touchX = 0f
         var touchY = 0f
+        var dragged = false
         view.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
@@ -139,15 +140,23 @@ class FloatingPanelService : Service() {
                     startY = params.y
                     touchX = event.rawX
                     touchY = event.rawY
+                    dragged = false
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    params.x = startX + (event.rawX - touchX).toInt()
-                    params.y = startY + (event.rawY - touchY).toInt()
+                    val dx = event.rawX - touchX
+                    val dy = event.rawY - touchY
+                    if (kotlin.math.abs(dx) > dp(5) || kotlin.math.abs(dy) > dp(5)) dragged = true
+                    params.x = startX + dx.toInt()
+                    params.y = startY + dy.toInt()
                     root?.let { try { wm.updateViewLayout(it, params) } catch (_: Exception) {} }
                     true
                 }
-                else -> false
+                MotionEvent.ACTION_UP -> {
+                    if (!dragged) view.performClick()
+                    true
+                }
+                else -> true
             }
         }
     }
