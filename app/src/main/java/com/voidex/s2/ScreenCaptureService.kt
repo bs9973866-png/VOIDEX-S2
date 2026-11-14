@@ -18,6 +18,12 @@ import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
+import android.os.SystemClock
+import java.util.concurrent.atomic.AtomicBoolean
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.pose.PoseDetection
+import com.google.mlkit.vision.pose.PoseDetector
+import com.google.mlkit.vision.pose.defaults.PoseDetectorOptions
 
 /**
  * User-consented screen capture foundation.
@@ -42,6 +48,9 @@ class ScreenCaptureService : Service() {
     private var worker: HandlerThread? = null
     private var framesReceived = 0L
     private var statsRunnable: Runnable? = null
+    private var poseDetector: PoseDetector? = null
+    private val frameProcessing = AtomicBoolean(false)
+    private var lastFrameProcessedAt = 0L
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
@@ -89,38 +98,59 @@ class ScreenCaptureService : Service() {
                 framesReceived++
                 try {
                     val plane = image.planes.firstOrNull()
-                    if (plane != null && image.format == PixelFormat.RGBA_8888) {
-                        val width = image.width
-                        val height = image.height
+                    val now = SystemClock.elapsedRealtime()
+                    // Pose inference is intentionally throttled to limit heat and frame drops.
+                    if (plane != null && image.format == PixelFormat.RGBA_8888 &&
+                        now - lastFrameProcessedAt >= 250L &&
+                        frameProcessing.compareAndSet(false, true)) {
+                        lastFrameProcessedAt = now
+                        val frameWidth = image.width
+                        val frameHeight = image.height
                         val rowStride = plane.rowStride
                         val pixelStride = plane.pixelStride
                         val buffer = plane.buffer
-                        val pixels = IntArray(width * height)
-                        for (y in 0 until height) {
-                            for (x in 0 until width) {
+                        val pixels = IntArray(frameWidth * frameHeight)
+                        for (y in 0 until frameHeight) {
+                            for (x in 0 until frameWidth) {
                                 val offset = y * rowStride + x * pixelStride
                                 val r = buffer.get(offset).toInt() and 0xff
                                 val g = buffer.get(offset + 1).toInt() and 0xff
                                 val b = buffer.get(offset + 2).toInt() and 0xff
                                 val a = buffer.get(offset + 3).toInt() and 0xff
-                                pixels[y * width + x] = (a shl 24) or (r shl 16) or (g shl 8) or b
+                                pixels[y * frameWidth + x] = (a shl 24) or (r shl 16) or (g shl 8) or b
                             }
                         }
-                        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                        bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
-                        val boxes = VisiblePlayerBoxDetector.detect(bitmap)
-                        bitmap.recycle()
-                        val values = FloatArray(boxes.size * 4)
-                        boxes.forEachIndexed { index, rect ->
-                            values[index * 4] = rect.left
-                            values[index * 4 + 1] = rect.top
-                            values[index * 4 + 2] = rect.right
-                            values[index * 4 + 3] = rect.bottom
+                        val bitmap = Bitmap.createBitmap(frameWidth, frameHeight, Bitmap.Config.ARGB_8888)
+                        bitmap.setPixels(pixels, 0, frameWidth, 0, 0, frameWidth, frameHeight)
+                        val detector = poseDetector ?: run {
+                            val options = PoseDetectorOptions.Builder()
+                                .setDetectorMode(PoseDetectorOptions.STREAM_MODE)
+                                .build()
+                            PoseDetection.getClient(options).also { poseDetector = it }
                         }
-                        startService(Intent(this, FloatingPanelService::class.java).apply {
-                            action = "com.voidex.s2.action.UPDATE_CANDIDATE_BOXES"
-                            putExtra("candidate_boxes", values)
-                        })
+                        detector.process(InputImage.fromBitmap(bitmap, 0))
+                            .addOnSuccessListener { pose ->
+                                val boxes = VisiblePlayerBoxDetector.detect(pose, frameWidth, frameHeight)
+                                val values = FloatArray(boxes.size * 4)
+                                boxes.forEachIndexed { index, rect ->
+                                    values[index * 4] = rect.left
+                                    values[index * 4 + 1] = rect.top
+                                    values[index * 4 + 2] = rect.right
+                                    values[index * 4 + 3] = rect.bottom
+                                }
+                                try {
+                                    startService(Intent(this, FloatingPanelService::class.java).apply {
+                                        action = "com.voidex.s2.action.UPDATE_CANDIDATE_BOXES"
+                                        putExtra("candidate_boxes", values)
+                                    })
+                                } catch (_: Exception) {
+                                    // Overlay may have been stopped by the user.
+                                }
+                            }
+                            .addOnCompleteListener {
+                                if (!bitmap.isRecycled) bitmap.recycle()
+                                frameProcessing.set(false)
+                            }
                     }
                 } catch (_: Exception) {
                     // Skip a bad frame and continue capture.
@@ -183,6 +213,9 @@ class ScreenCaptureService : Service() {
         }
         statsRunnable?.let { callback -> worker?.let { thread -> Handler(thread.looper).removeCallbacks(callback) } }
         statsRunnable = null
+        try { poseDetector?.close() } catch (_: Exception) {}
+        poseDetector = null
+        frameProcessing.set(false)
         worker?.quitSafely()
         worker = null
     }
