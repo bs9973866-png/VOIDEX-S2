@@ -222,6 +222,14 @@ class FloatingPanelService : Service() {
         return row
     }
 
+    /**
+     * Publishes screen-space markers from an explicitly authorized provider.
+     * This service itself never discovers or calculates player positions.
+     */
+    fun submitMarkers(items: List<OverlayMarker>) {
+        renderer?.submitMarkers(items)
+    }
+
     private fun refreshRenderer() {
         getSharedPreferences("voidex_overlay", MODE_PRIVATE).edit()
             .putBoolean("boxes", showBoxes)
