@@ -83,7 +83,12 @@ class MainActivity : Activity() {
         }
 
         try {
-            startService(Intent(this, FloatingPanelService::class.java))
+            val serviceIntent = Intent(this, FloatingPanelService::class.java)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent)
+            } else {
+                startService(serviceIntent)
+            }
         } catch (error: Exception) {
             Toast.makeText(this, "Не удалось запустить Overlay: ${error.message}", Toast.LENGTH_LONG).show()
             return
