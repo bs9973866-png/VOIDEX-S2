@@ -73,8 +73,8 @@ class MainActivity : Activity() {
         setContentView(root)
     }
 
-    private fun startOverlayIfAllowed(launchGame: Boolean) {
-        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+    private fun startOverlayIfAllowed(launchGame: Boolean, skipNotificationPrompt: Boolean = false) {
+        if (!skipNotificationPrompt && android.os.Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             pendingGameLaunch = launchGame
             requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), notificationPermissionRequest)
@@ -131,7 +131,7 @@ class MainActivity : Activity() {
             val launchGame = pendingGameLaunch
             pendingGameLaunch = false
             // Overlay startup remains available even if notifications are declined.
-            startOverlayIfAllowed(launchGame)
+            startOverlayIfAllowed(launchGame, skipNotificationPrompt = true)
         }
     }
 
