@@ -50,20 +50,13 @@ class MainActivity : Activity() {
         tabs.addView(action("ТРЕНИРОВКА") { currentTab = "training"; showTraining() },
             LinearLayout.LayoutParams(0, dp(48), 1f))
         root.addView(tabs)
-        root.addView(action("ЗАПУСТИТЬ ПЛАВАЮЩУЮ ПАНЕЛЬ") {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M &&
-                !android.provider.Settings.canDrawOverlays(this)) {
-                val permissionIntent = Intent(
-                    android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:$packageName")
-                )
-                startActivity(permissionIntent)
-                Toast.makeText(this, "Разреши отображение поверх других приложений, затем вернись сюда.", Toast.LENGTH_LONG).show()
-            } else {
-                startService(Intent(this, FloatingPanelService::class.java))
-                Toast.makeText(this, "Плавающая панель запущена", Toast.LENGTH_SHORT).show()
-            }
+        root.addView(action("ЗАПУСТИТЬ OVERLAY") {
+            startOverlayIfAllowed(launchGame = false)
         })
+        root.addView(action("ЗАПУСТИТЬ STANDOFF 2 + OVERLAY") {
+            startOverlayIfAllowed(launchGame = true)
+        })
+        root.addView(label("Кнопка запускает внешний оверлей и открывает Standoff 2. Оверлей не получает скрытые координаты игроков; маркеры появятся только при подключении разрешённого источника данных."))
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(12), 0, 0)
@@ -71,6 +64,43 @@ class MainActivity : Activity() {
         val scroll = ScrollView(this).apply { isFillViewport = true; addView(content) }
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
+    }
+
+    private fun startOverlayIfAllowed(launchGame: Boolean) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M &&
+            !android.provider.Settings.canDrawOverlays(this)) {
+            val permissionIntent = Intent(
+                android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:$packageName")
+            )
+            startActivity(permissionIntent)
+            Toast.makeText(
+                this,
+                "Разреши отображение поверх других приложений, вернись в VOIDEX и нажми кнопку ещё раз.",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        try {
+            startService(Intent(this, FloatingPanelService::class.java))
+        } catch (error: Exception) {
+            Toast.makeText(this, "Не удалось запустить Overlay: ${error.message}", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        if (!launchGame) {
+            Toast.makeText(this, "VOIDEX Overlay запущен", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val gameIntent = packageManager.getLaunchIntentForPackage("com.axlebolt.standoff2")
+        if (gameIntent == null) {
+            Toast.makeText(this, "Standoff 2 не найдена. Установи игру и попробуй снова.", Toast.LENGTH_LONG).show()
+            return
+        }
+        gameIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        startActivity(gameIntent)
     }
 
     private fun showSkins() {
