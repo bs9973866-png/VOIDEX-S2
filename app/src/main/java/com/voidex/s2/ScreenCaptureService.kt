@@ -7,6 +7,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
@@ -22,8 +23,8 @@ import android.os.IBinder
  * User-consented screen capture foundation.
  *
  * Captured frames are currently sampled only to verify that the MediaProjection
- * pipeline is alive. No player classifier is bundled yet, so this service does
- * not generate ESP markers or infer health/names/positions.
+ * pipeline is alive and runs a conservative visible blue-silhouette heuristic.
+ * Candidate boxes are approximate and may include false positives.
  */
 class ScreenCaptureService : Service() {
     companion object {
@@ -86,7 +87,46 @@ class ScreenCaptureService : Service() {
             val image = reader.acquireLatestImage()
             if (image != null) {
                 framesReceived++
-                image.close()
+                try {
+                    val plane = image.planes.firstOrNull()
+                    if (plane != null && image.format == PixelFormat.RGBA_8888) {
+                        val width = image.width
+                        val height = image.height
+                        val rowStride = plane.rowStride
+                        val pixelStride = plane.pixelStride
+                        val buffer = plane.buffer
+                        val pixels = IntArray(width * height)
+                        for (y in 0 until height) {
+                            for (x in 0 until width) {
+                                val offset = y * rowStride + x * pixelStride
+                                val r = buffer.get(offset).toInt() and 0xff
+                                val g = buffer.get(offset + 1).toInt() and 0xff
+                                val b = buffer.get(offset + 2).toInt() and 0xff
+                                val a = buffer.get(offset + 3).toInt() and 0xff
+                                pixels[y * width + x] = (a shl 24) or (r shl 16) or (g shl 8) or b
+                            }
+                        }
+                        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                        bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
+                        val boxes = VisiblePlayerBoxDetector.detect(bitmap)
+                        bitmap.recycle()
+                        val values = FloatArray(boxes.size * 4)
+                        boxes.forEachIndexed { index, rect ->
+                            values[index * 4] = rect.left
+                            values[index * 4 + 1] = rect.top
+                            values[index * 4 + 2] = rect.right
+                            values[index * 4 + 3] = rect.bottom
+                        }
+                        startService(Intent(this, FloatingPanelService::class.java).apply {
+                            action = FloatingPanelService.ACTION_UPDATE_CANDIDATE_BOXES
+                            putExtra(FloatingPanelService.EXTRA_BOXES, values)
+                        })
+                    }
+                } catch (_: Exception) {
+                    // Skip a bad frame and continue capture.
+                } finally {
+                    image.close()
+                }
             }
         }, handler)
 
